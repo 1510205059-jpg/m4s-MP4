@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>m4s 转 wav 转换器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #8b5cf6; /* 换了个代表音频的紫色系 */
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #7c3aed;
+        }
+        button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+            color: #059669;
+        }
+        #download-area {
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #10b981;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+    </style>
+    <script src="coi-serviceworker.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h1>m4s 转 WAV 提取工具</h1>
+    <p style="font-size: 14px; color: #64748b;">用于将哔哩哔哩等平台缓存的音频流文件（通常名为 audio.m4s）直接转码为标准的 WAV 音频格式。</p>
+
+    <div class="form-group">
+        <label for="audioFile">上传音频文件 (audio.m4s)</label>
+        <input type="file" id="audioFile" accept=".m4s,.mp4,.aac">
+    </div>
+
+    <button id="startBtn" onclick="convert()">开始转换提取 WAV</button>
+
+    <div id="status"></div>
+
+    <div id="download-area">
+        <a id="downloadLink" class="download-btn" href="#" download="output.wav">⬇️ 下载 WAV 音频文件</a>
+    </div>
+</div>
+
+<script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+
+    async function convert() {
+        const audioInput = document.getElementById('audioFile').files[0];
+        const statusDiv = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const downloadArea = document.getElementById('download-area');
+
+        if (!audioInput) {
+            alert('请上传你要转换的 m4s 文件！');
+            return;
+        }
+
+        try {
+            startBtn.disabled = true;
+            statusDiv.style.color = "#059669";
+            statusDiv.innerText = "正在加载 FFmpeg 核心引擎...";
+            downloadArea.style.display = 'none';
+
+            if (!ffmpeg.isLoaded()) {
+                await ffmpeg.load();
+            }
+
+            statusDiv.innerText = "正在读取文件...";
+            ffmpeg.FS('writeFile', 'input.m4s', await fetchFile(audioInput));
+
+            statusDiv.innerText = "正在解码并转换为 WAV，请稍候...";
+            
+            // 核心命令变更：-i 输入文件, -vn (忽略可能存在的视频流), 自动转码为 wav
+            await ffmpeg.run('-i', 'input.m4s', '-vn', 'output.wav');
+
+            statusDiv.innerText = "处理完成！正在生成下载链接...";
+
+            // 读取生成的 wav 文件
+            const data = ffmpeg.FS('readFile', 'output.wav');
+            
+            // 创建 audio/wav 类型的 Blob
+            const blob = new Blob([data.buffer], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = url;
+            downloadArea.style.display = 'block';
+            statusDiv.innerText = "转换成功！";
+
+            // 清理内存
+            ffmpeg.FS('unlink', 'input.m4s');
+            ffmpeg.FS('unlink', 'output.wav');
+
+        } catch (error) {
+            console.error(error);
+            statusDiv.innerText = "发生错误，请查看浏览器控制台 (F12)。";
+            statusDiv.style.color = "red";
+        } finally {
+            startBtn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>
